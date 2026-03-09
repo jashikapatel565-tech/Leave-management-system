@@ -1,15 +1,16 @@
 // ═══════════════════════════════════════════════════
-//  Controllers/UserController.cs
+//  Controllers/UserController.cs — COMPLETE FINAL FIX
 //
-//  Endpoints:
-//    POST   /api/User              → Create user (for Swagger testing)
-//    GET    /api/User              → Get all users (no passwords)
-//    GET    /api/User/employees    → Get only employees (for manager tab)
-//    POST   /api/User/Login        → Login, returns userId + role + name
-//    POST   /api/User/AddEmployee  → Manager adds employee from dashboard
+//  THE ROOT CAUSE WAS:
+//  Frontend was sending raw form values (with possible
+//  spaces/caps) to AddEmployee. Backend stored them as-is.
+//  Login then compared normalised input vs un-normalised DB.
 //
-//  LoginRequest      → defined in Models/LoginRequest.cs
-//  AddEmployeeRequest→ defined at the bottom of THIS file only
+//  THE FIX:
+//  1. Frontend now trims+lowercases before sending (App.js)
+//  2. Backend ALSO trims+lowercases on receive (double safety)
+//  3. Login normalises both sides before comparing
+//  4. All comparisons done in C# memory (not MySQL)
 // ═══════════════════════════════════════════════════
 using Microsoft.AspNetCore.Mvc;
 using LeaveAPI.Data;
@@ -22,20 +23,16 @@ namespace LeaveAPI.Controllers
     public class UserController : ControllerBase
     {
         private readonly AppDbContext _context;
-
-        public UserController(AppDbContext context)
-        {
-            _context = context;
-        }
+        public UserController(AppDbContext context) { _context = context; }
 
         // ── POST /api/User ──────────────────────────────────
         [HttpPost]
         public IActionResult CreateUser([FromBody] User user)
         {
-            var existing = _context.Users.FirstOrDefault(u => u.Email == user.Email);
-            if (existing != null)
-                return Conflict(new { message = $"A user with email '{user.Email}' already exists." });
-
+            var emailLower = user.Email.Trim().ToLower();
+            if (_context.Users.ToList().Any(u => u.Email.Trim().ToLower() == emailLower))
+                return Conflict(new { message = $"Email '{user.Email}' already exists." });
+            user.Email = emailLower;
             _context.Users.Add(user);
             _context.SaveChanges();
             return Ok(user);
@@ -45,31 +42,40 @@ namespace LeaveAPI.Controllers
         [HttpGet]
         public IActionResult GetUsers()
         {
-            var users = _context.Users
+            return Ok(_context.Users
                 .Select(u => new { u.Id, u.Name, u.Email, u.Role })
-                .ToList();
-            return Ok(users);
+                .ToList());
         }
 
         // ── GET /api/User/employees ─────────────────────────
         [HttpGet("employees")]
         public IActionResult GetEmployees()
         {
-            var employees = _context.Users
+            return Ok(_context.Users
                 .Where(u => u.Role == "Employee")
                 .Select(u => new { u.Id, u.Name, u.Email })
                 .OrderBy(u => u.Name)
-                .ToList();
-            return Ok(employees);
+                .ToList());
         }
 
         // ── POST /api/User/Login ────────────────────────────
         [HttpPost("Login")]
         public IActionResult Login([FromBody] LoginRequest request)
         {
-            var user = _context.Users.FirstOrDefault(
-                u => u.Email == request.Email && u.Password == request.Password
-            );
+            if (string.IsNullOrWhiteSpace(request.Email) ||
+                string.IsNullOrWhiteSpace(request.Password))
+                return Unauthorized(new { message = "Email and password are required." });
+
+            // Normalise input
+            var emailNorm = request.Email.Trim().ToLower();
+            var pwNorm    = request.Password.Trim();
+
+            // Pull to C# memory — no MySQL collation issues
+            var user = _context.Users
+                .ToList()
+                .FirstOrDefault(u =>
+                    u.Email.Trim().ToLower() == emailNorm &&
+                    u.Password.Trim()        == pwNorm);
 
             if (user == null)
                 return Unauthorized(new { message = "Invalid email or password." });
@@ -90,26 +96,28 @@ namespace LeaveAPI.Controllers
         {
             if (string.IsNullOrWhiteSpace(request.Name))
                 return BadRequest(new { message = "Name is required." });
-
             if (string.IsNullOrWhiteSpace(request.Email))
                 return BadRequest(new { message = "Email is required." });
-
             if (string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest(new { message = "Password is required." });
 
-            var existing = _context.Users
-                .FirstOrDefault(u => u.Email == request.Email.Trim().ToLower());
-            if (existing != null)
-                return Conflict(new { message = $"An account with email '{request.Email}' already exists." });
+            // ✅ Normalise EVERYTHING on the backend side too (double safety)
+            var nameTrim   = request.Name.Trim();
+            var emailLower = request.Email.Trim().ToLower();
+            var pwTrim     = request.Password.Trim();
 
+            // Duplicate check in C#
+            if (_context.Users.ToList().Any(u => u.Email.Trim().ToLower() == emailLower))
+                return Conflict(new { message = $"An account with email '{emailLower}' already exists." });
+
+            // Save with normalised values — guaranteed to match Login
             var emp = new User
             {
-                Name     = request.Name.Trim(),
-                Email    = request.Email.Trim().ToLower(),
-                Password = request.Password,
+                Name     = nameTrim,
+                Email    = emailLower,
+                Password = pwTrim,
                 Role     = "Employee"
             };
-
             _context.Users.Add(emp);
             _context.SaveChanges();
 
@@ -117,8 +125,8 @@ namespace LeaveAPI.Controllers
             {
                 UserId    = emp.Id,
                 Message   = $"Welcome to LeaveFlow, {emp.Name}! " +
-                            $"Your account has been created by the manager. " +
-                            $"You can now log in and apply for leaves.",
+                            "Your account has been created by the manager. " +
+                            "You can now log in and apply for leaves.",
                 IsRead    = false,
                 CreatedAt = DateTime.UtcNow
             });
@@ -134,7 +142,6 @@ namespace LeaveAPI.Controllers
         }
     }
 
-    // AddEmployeeRequest is defined ONCE here only
     public class AddEmployeeRequest
     {
         public string Name     { get; set; } = string.Empty;
