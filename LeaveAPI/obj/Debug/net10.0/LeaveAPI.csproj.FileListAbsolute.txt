@@ -106,6 +106,7 @@ C:\Users\Administrator\Downloads\leave\LeaveAPI\obj\Debug\net10.0\LeaveAPI.Assem
 C:\Users\Administrator\Downloads\leave\LeaveAPI\obj\Debug\net10.0\LeaveAPI.csproj.CoreCompileInputs.cache
 C:\Users\Administrator\Downloads\leave\LeaveAPI\obj\Debug\net10.0\LeaveAPI.MvcApplicationPartsAssemblyInfo.cs
 C:\Users\Administrator\Downloads\leave\LeaveAPI\obj\Debug\net10.0\LeaveAPI.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\Administrator\Downloads\leave\LeaveAPI\obj\Debug\net10.0\LeaveAPI.sourcelink.json
 C:\Users\Administrator\Downloads\leave\LeaveAPI\obj\Debug\net10.0\rjimswa.dswa.cache.json
 C:\Users\Administrator\Downloads\leave\LeaveAPI\obj\Debug\net10.0\rjsmrazor.dswa.cache.json
 C:\Users\Administrator\Downloads\leave\LeaveAPI\obj\Debug\net10.0\rjsmcshtml.dswa.cache.json
